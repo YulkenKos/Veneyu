@@ -1,0 +1,241 @@
+-- Loader que descarga Venev1Y.lua y le inyecta Auto-Farm Delivery modificado (seguro, local)
+local RAW_URL = "https://raw.githubusercontent.com/YulkenKos/Veneyu/main/Venev1Y.lua"
+
+local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
+local Chat = game:GetService("Chat")
+local player = Players.LocalPlayer
+if not player then return end
+
+local function safeNotify(msg, dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {Title = "Venev1Y", Text = msg, Duration = dur or 3})
+    end)
+end
+
+-- Descargar el script remoto
+local remoteCode
+local ok, res = pcall(function() return game:HttpGet(RAW_URL, true) end)
+if ok and type(res) == "string" and #res > 0 then
+    remoteCode = res
+    safeNotify("Archivo descargado. Integrando módulo...")
+else
+    safeNotify("Fallo descargando el archivo. Ver consola.")
+    warn("[Venev1Y Loader] HttpGet fallo:", res)
+    return
+end
+
+-- Módulo inyectado (modificado: nombres, UI discreta, chat-commands, delays distintos)
+local injectedModule = [[
+-- === MÓDULO: DELIVERY SIM (LOCAL Y SEGURO) v2 ===
+local _P = game:GetService("Players")
+local _Sg = game:GetService("StarterGui")
+local _Ui = game:GetService("UserInputService")
+local _Local = _P.LocalPlayer
+if not _Local then return end
+
+-- Semilla aleatoria simple
+math.randomseed(tick() % 1000000)
+
+-- Guards globales para evitar duplicados
+if _G.__v1y_delivery_mod_loaded then return end
+_G.__v1y_delivery_mod_loaded = true
+
+-- Flags internos renombrados
+local flag_run = "__v1y_del_run"
+if _G[flag_run] == nil then _G[flag_run] = false end
+
+-- Notificación mínima
+local function _note(t, d)
+    pcall(function()
+        _Sg:SetCore("SendNotification", {Title="Delivery", Text=t, Duration=d or 2})
+    end)
+end
+
+-- UI discreta: contador flotante + pequeña barra
+local function _createHUD()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "v1y_del_hud"
+    gui.ResetOnSpawn = false
+    gui.Parent = _Local:WaitForChild("PlayerGui")
+
+    -- floating pill (contador)
+    local pill = Instance.new("Frame", gui)
+    pill.Size = UDim2.new(0, 120, 0, 28)
+    pill.Position = UDim2.new(0.02, 0, 0.02, 0) -- esquina superior izquierda, discreto
+    pill.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    pill.BorderSizePixel = 0
+    pill.AnchorPoint = Vector2.new(0,0)
+    pill.Name = "pill"
+    local pillCorner = Instance.new("UICorner", pill); pillCorner.CornerRadius = UDim.new(0,12)
+
+    local countLabel = Instance.new("TextLabel", pill)
+    countLabel.Size = UDim2.new(1, -8, 1, 0)
+    countLabel.Position = UDim2.new(0, 8, 0, 0)
+    countLabel.BackgroundTransparency = 1
+    countLabel.Text = "Entregas: 0"
+    countLabel.Font = Enum.Font.Gotham
+    countLabel.TextSize = 14
+    countLabel.TextColor3 = Color3.new(1,1,1)
+    countLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- tiny progress bar under pill
+    local barbg = Instance.new("Frame", gui)
+    barbg.Size = UDim2.new(0, 120, 0, 6)
+    barbg.Position = UDim2.new(0.02, 0, 0.02, 34)
+    barbg.AnchorPoint = Vector2.new(0,0)
+    barbg.BackgroundColor3 = Color3.fromRGB(12,12,12)
+    barbg.BorderSizePixel = 0
+    local barCorner = Instance.new("UICorner", barbg); barCorner.CornerRadius = UDim.new(0,6)
+
+    local bar = Instance.new("Frame", barbg)
+    bar.Size = UDim2.new(0,0,1,0)
+    bar.Position = UDim2.new(0,0,0,0)
+    bar.BackgroundColor3 = Color3.fromRGB(90,170,110)
+    local barInnerCorner = Instance.new("UICorner", bar); barInnerCorner.CornerRadius = UDim.new(0,6)
+
+    return {
+        gui = gui,
+        pill = pill,
+        countLabel = countLabel,
+        bar = bar,
+        barbg = barbg
+    }
+end
+
+-- Simulación: tiempos modificados y comportamiento menos repetitivo
+local function _simulateLoop(stateTbl)
+    if _G[flag_run] then return end
+    _G[flag_run] = true
+    _note("Simulación iniciada", 2)
+    spawn(function()
+        while _G[flag_run] do
+            -- tiempo previo aleatorio (más humano)
+            local idle = 1 + math.random() * 4  -- 1 a 5s
+            wait(idle)
+            if not _G[flag_run] then break end
+
+            -- duración de progreso aleatoria (0.8 a 4.2s)
+            local duration = 0.8 + math.random() * 3.4
+            local t0 = tick()
+            while tick() - t0 < duration and _G[flag_run] do
+                local frac = math.clamp((tick() - t0) / duration, 0, 1)
+                pcall(function()
+                    if stateTbl and stateTbl.bar then
+                        stateTbl.bar.Size = UDim2.new(frac, 0, 1, 0)
+                    end
+                end)
+                wait(0.06 + math.random() * 0.05)
+            end
+
+            if not _G[flag_run] then break end
+
+            -- incremento
+            stateTbl.count = (stateTbl.count or 0) + 1
+            pcall(function()
+                if stateTbl and stateTbl.countLabel then
+                    stateTbl.countLabel.Text = "Entregas: "..tostring(stateTbl.count)
+                    -- pequeño efecto visual: parpadeo sutil
+                    local orig = stateTbl.countLabel.TextColor3
+                    stateTbl.countLabel.TextColor3 = Color3.fromRGB(0.9,0.9,0.9)
+                    wait(0.08)
+                    stateTbl.countLabel.TextColor3 = orig
+                end
+                if stateTbl and stateTbl.bar then
+                    stateTbl.bar.Size = UDim2.new(0,0,1,0)
+                end
+            end)
+
+            -- pausa entre entregas (1 a 3.5s)
+            wait(1 + math.random() * 2.5)
+        end
+        _note("Simulación detenida", 2)
+    end)
+end
+
+-- Attach module: crea HUD mínimo y expone controles start/stop (GUI pequeño + chat commands)
+local function _attach()
+    if _G.__v1y_delivery_attached then return end
+    _G.__v1y_delivery_attached = true
+
+    local hud = _createHUD()
+    local state = { count = 0, countLabel = hud.countLabel, bar = hud.bar }
+
+    -- pequeño botón invisible (click area) para abrir/ocultar HUD cuando lo necesites
+    local toggleBtn = Instance.new("TextButton", hud.gui)
+    toggleBtn.Size = UDim2.new(0, 20, 0, 20)
+    toggleBtn.Position = UDim2.new(0.02, 100, 0.02, 4) -- justo en pill (pequeño)
+    toggleBtn.BackgroundTransparency = 0.8
+    toggleBtn.Text = "+"
+    toggleBtn.Font = Enum.Font.Gotham
+    toggleBtn.TextSize = 14
+    toggleBtn.TextColor3 = Color3.new(1,1,1)
+
+    local hudVisible = true
+    toggleBtn.MouseButton1Click:Connect(function()
+        hudVisible = not hudVisible
+        pcall(function() hud.gui.Enabled = hudVisible end)
+    end)
+
+    -- start/stop via chat commands
+    game:GetService("Players").LocalPlayer.Chatted:Connect(function(msg)
+        local lower = tostring(msg):lower()
+        if lower:match("^/startdel") then
+            if _G[flag_run] then
+                _note("Ya en ejecución", 2)
+            else
+                _simulateLoop(state)
+            end
+        elseif lower:match("^/stopdel") then
+            if not _G[flag_run] then
+                _note("No hay simulación activa", 2)
+            else
+                _G[flag_run] = false
+            end
+        end
+    end)
+
+    -- small invisible keybind: RightControl to toggle start/stop (discreto)
+    _Ui.InputBegan:Connect(function(inp, processed)
+        if processed then return end
+        if inp.KeyCode == Enum.KeyCode.RightControl then
+            if _G[flag_run] then
+                _G[flag_run] = false
+            else
+                _simulateLoop(state)
+            end
+        elseif inp.KeyCode == Enum.KeyCode.Escape then
+            pcall(function() hud.gui.Enabled = not hud.gui.Enabled end)
+        end
+    end)
+
+    -- Expose minimal start/stop functions to global (obfuscated names)
+    _G["__v1y_del_start"] = function() if not _G[flag_run] then _simulateLoop(state) end end
+    _G["__v1y_del_stop"]  = function() if _G[flag_run] then _G[flag_run] = false end end
+
+    _note("Delivery mod listo. Usa /startdel y /stopdel o RightCtrl para control.", 4)
+end
+
+pcall(function() _attach() end)
+]]
+
+-- Merge: remote code + injected module (injected as string so we compile together)
+local fullSource = remoteCode .. "\n\n-- <<< INJECTED DELIVERY MODULE v2 >>>\n" .. injectedModule
+
+-- Compilar todo en loadstring
+local compileOk, fnOrErr = pcall(function() return loadstring(fullSource) end)
+if not compileOk or type(fnOrErr) ~= "function" then
+    safeNotify("Error compilando el código integrado. Revisa consola.")
+    warn("[Venev1Y Loader] Error compilando:", fnOrErr)
+    return
+end
+
+-- Ejecutar en pcall
+local runOk, runErr = pcall(function() fnOrErr() end)
+if runOk then
+    safeNotify("Venev1Y + Módulo Delivery v2 ejecutados.")
+    print("[Venev1Y Loader] Ejecución OK.")
+else
+    safeNotify("Error durante ejecución. Revisa consola.")
+    warn("[Venev1Y Loader] Error en ejecución:", runErr)
+end
